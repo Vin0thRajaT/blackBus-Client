@@ -7,6 +7,9 @@ import {
   List,
   ListItem,
   ListItemText,
+  Card,
+  CardContent,
+  Divider,
 } from "@mui/material";
 import CustomAppBar from "./CustomAppbar";
 import axios from "axios";
@@ -37,13 +40,24 @@ const AdminBookedTicketsList = () => {
           </Typography>
           <List>
             {buses.map((bus) => (
-              <ListItem
-                key={bus.busNumber}
-                component={Link}
-                to={`/admin/booked-tickets/${bus.busNumber}`}
-              >
-                <ListItemText primary={`Bus Number: ${bus.busNumber} - Bus Name: ${bus.busName}`} />
-              </ListItem>
+              <Box key={bus.busNumber} mb={2}>
+                <Card elevation={3}>
+                  <CardContent>
+                    <ListItem
+                      button
+                      component={Link}
+                      to={`/admin/booked-tickets/${bus.busNumber}`}
+                      sx={{ textDecoration: "none" }}
+                    >
+                      <ListItemText
+                        primary={`Bus Name: ${bus.busName}`}
+                        secondary={`Bus Number: ${bus.busNumber}`}
+                      />
+                    </ListItem>
+                  </CardContent>
+                  <Divider />
+                </Card>
+              </Box>
             ))}
           </List>
         </Box>
