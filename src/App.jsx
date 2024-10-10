@@ -8,6 +8,7 @@ import BookingsPage from "./components/BookingsPage";
 import CreateBus from "./components/CreateBus";
 import AdminBookedTicketsList from "./components/AdminBookedTicketsList";
 import AdminBookedTickets from "./components/AdminBookedTickets";
+import PaymentStatus from "./components/PaymentStatus";
 
 const App = () => {
   return (
@@ -27,6 +28,7 @@ const App = () => {
         path="/admin/booked-tickets/:busId"
         element={<AdminBookedTickets />}
       />
+      <Route path="/paymentStatus/success" element={<PaymentStatus />} />
     </Routes>
   );
 };

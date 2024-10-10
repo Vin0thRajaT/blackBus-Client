@@ -12,7 +12,7 @@ import {
   MenuItem,
   Box,
 } from "@mui/material";
-import { EventSeat } from "@mui/icons-material"; // Importing the seat icon
+import { EventSeat } from "@mui/icons-material";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { AuthContext } from "../context/AuthContext";
@@ -29,10 +29,11 @@ const BookNow = () => {
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [selectedSeats, setSelectedSeats] = useState(new Set());
   const [passengerDetails, setPassengerDetails] = useState([]);
+  const [tempBookingId, setTempBookingId] = useState(null);
 
   useEffect(() => {
     if (!user) {
-      navigate("/login"); // Redirect to login if not authenticated
+      navigate("/login");
     } else {
       const fetchBusDetails = async () => {
         try {
@@ -58,31 +59,19 @@ const BookNow = () => {
   const handleSeatSelect = (seatNumber) => {
     const updatedSeats = new Set(selectedSeats);
     if (updatedSeats.has(seatNumber)) {
-      updatedSeats.delete(seatNumber); // Deselect seat if already selected
+      updatedSeats.delete(seatNumber);
     } else {
-      updatedSeats.add(seatNumber); // Select seat
+      updatedSeats.add(seatNumber);
     }
     setSelectedSeats(updatedSeats);
 
-    // Adjust passenger details form based on number of seats selected
-    const updatedPassengerDetails = [...passengerDetails];
-    if (updatedSeats.has(seatNumber)) {
-      // Add passenger detail form for the newly selected seat
-      updatedPassengerDetails.push({
-        seatNumber,
-        passengerName: "",
-        passengerAge: "",
-        passengerGender: "",
-      });
-    } else {
-      // Remove passenger detail form if seat is deselected
-      const index = updatedPassengerDetails.findIndex(
-        (detail) => detail.seatNumber === seatNumber
-      );
-      if (index !== -1) {
-        updatedPassengerDetails.splice(index, 1);
-      }
-    }
+    const updatedPassengerDetails = Array.from(updatedSeats).map((seat) => ({
+      seatNumber: seat,
+      passengerName: "",
+      passengerAge: "",
+      passengerGender: "",
+    }));
+
     setPassengerDetails(updatedPassengerDetails);
   };
 
@@ -92,59 +81,73 @@ const BookNow = () => {
     setPassengerDetails(updatedDetails);
   };
 
-  const handleBooking = async () => {
+  const handleProceedToPayment = async () => {
     if (selectedSeats.size === 0) {
       setError("Please select at least one seat to book.");
       setOpenSnackbar(true);
       return;
     }
 
-    try {
-      const token = localStorage.getItem("token"); // Retrieve token from localStorage
-
-      if (!token) {
-        setError("You must be logged in to book a seat.");
+    for (let detail of passengerDetails) {
+      if (
+        !detail.passengerName ||
+        !detail.passengerAge ||
+        !detail.passengerGender
+      ) {
+        setError("Please fill in all passenger details.");
         setOpenSnackbar(true);
         return;
       }
+    }
 
-      // Validate passenger details
-      for (let detail of passengerDetails) {
-        if (
-          !detail.passengerName ||
-          !detail.passengerAge ||
-          !detail.passengerGender
-        ) {
-          setError("Please fill in all passenger details.");
-          setOpenSnackbar(true);
-          return;
-        }
-      }
+    const seatDetails = passengerDetails.map(
+      ({ seatNumber, passengerName, passengerAge, passengerGender }) => ({
+        seatNumber,
+        passengerName,
+        passengerAge,
+        passengerGender,
+      })
+    );
 
-      // Send seatDetails along with the passenger information
-      const seatDetails = passengerDetails.map((detail) => ({
-        seatNumber: detail.seatNumber,
-        passengerName: detail.passengerName,
-        passengerAge: detail.passengerAge,
-        passengerGender: detail.passengerGender,
-      }));
+    try {
+      const token = localStorage.getItem("token");
 
-      await axios.post(
-        "http://localhost:5000/api/buses/book",
+      // Step 1: Create a temporary booking
+      const response = await axios.post(
+        "http://localhost:5000/api/buses/temp-book",
         {
           busId,
           seatDetails,
         },
         {
-          headers: { "x-auth-token": token }, // Include token in the headers
+          headers: { "x-auth-token": token },
         }
       );
 
-      alert("Booking successful!");
-      navigate("/"); // Redirect to homepage after booking
+      const { tempBookingId: newTempBookingId } = response.data;
+      setTempBookingId(newTempBookingId);
+
+      // Store tempBookingId in localStorage
+      localStorage.setItem("tempBookingId", newTempBookingId);
+
+      // Step 2: Create the Checkout session
+      const paymentResponse = await axios.post(
+        "http://localhost:5000/api/buses/checkout-session",
+        {
+          amount: selectedSeats.size * bus.price,
+          bookingId: newTempBookingId,
+          returnUrl: "http://localhost:5173/paymentStatus/success", // Updated return URL
+        },
+        {
+          headers: { "x-auth-token": token },
+        }
+      );
+
+      // Redirect to Stripe Checkout
+      window.location.href = paymentResponse.data.url;
     } catch (err) {
       setError(
-        err.response?.data?.msg || "Error booking the bus. Please try again."
+        err.response?.data?.msg || "Error processing payment. Please try again."
       );
       setOpenSnackbar(true);
     }
@@ -153,18 +156,9 @@ const BookNow = () => {
   if (loading) return <CircularProgress />;
   if (!bus) return <div>No bus found.</div>;
 
-  // Extract bookedSeats from the bus response
   const bookedSeats = bus.bookedSeats.map((seat) => seat.seatNumber);
-
-  // Define seat layout (number of rows and seats per row)
-  const rows = Math.ceil(bus.seats / 4); // Example: 4 seats per row
+  const rows = Math.ceil(bus.seats / 4);
   const seatsPerRow = 4;
-
-  // Generate seat numbers based on the layout
-  const seatNumbers = Array.from(
-    { length: bus.seats },
-    (_, index) => index + 1
-  );
 
   return (
     <div>
@@ -186,62 +180,60 @@ const BookNow = () => {
               key={rowIndex}
               justifyContent="center"
             >
-              {seatNumbers
-                .slice(rowIndex * seatsPerRow, (rowIndex + 1) * seatsPerRow)
-                .map((seatNumber) => {
-                  const isBooked = bookedSeats.includes(seatNumber);
-                  const isSelected = selectedSeats.has(seatNumber);
-                  return (
-                    <Grid item key={seatNumber}>
-                      <Tooltip
-                        title={
-                          isBooked
-                            ? "Seat already booked"
-                            : isSelected
-                            ? "Selected"
-                            : "Available"
+              {Array.from({ length: seatsPerRow }, (_, seatIndex) => {
+                const seatNumber = rowIndex * seatsPerRow + seatIndex + 1;
+                const isBooked = bookedSeats.includes(seatNumber);
+                const isSelected = selectedSeats.has(seatNumber);
+                return (
+                  <Grid item key={seatNumber}>
+                    <Tooltip
+                      title={
+                        isBooked
+                          ? "Seat already booked"
+                          : isSelected
+                          ? "Selected"
+                          : "Available"
+                      }
+                      arrow
+                      disableInteractive
+                    >
+                      <Button
+                        onClick={() =>
+                          !isBooked && handleSeatSelect(seatNumber)
                         }
-                        arrow
-                        disableInteractive
+                        variant="contained"
+                        color={
+                          isBooked
+                            ? "default"
+                            : isSelected
+                            ? "primary"
+                            : "success"
+                        }
+                        disabled={isBooked}
+                        style={{
+                          minWidth: "40px",
+                          minHeight: "40px",
+                          borderRadius: "50%",
+                          margin: "5px",
+                        }}
                       >
-                        <Button
-                          onClick={() =>
-                            !isBooked && handleSeatSelect(seatNumber)
-                          }
-                          variant="contained"
-                          color={
-                            isBooked
-                              ? "default"
-                              : isSelected
-                              ? "primary"
-                              : "success"
-                          }
-                          disabled={isBooked}
-                          style={{
-                            minWidth: "40px",
-                            minHeight: "40px",
-                            borderRadius: "50%",
-                            margin: "5px",
-                          }}
-                        >
-                          <EventSeat />
-                        </Button>
-                      </Tooltip>
-                      <Typography
-                        variant="caption"
-                        display="block"
-                        align="center"
-                      >
-                        {seatNumber}
-                      </Typography>
-                    </Grid>
-                  );
-                })}
+                        <EventSeat />
+                      </Button>
+                    </Tooltip>
+                    <Typography
+                      variant="caption"
+                      display="block"
+                      align="center"
+                    >
+                      {seatNumber}
+                    </Typography>
+                  </Grid>
+                );
+              })}
             </Grid>
           ))}
         </Grid>
 
-        {/* Passenger Details Form */}
         {selectedSeats.size > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h6" gutterBottom>
@@ -324,11 +316,11 @@ const BookNow = () => {
         <Button
           variant="contained"
           color="primary"
-          onClick={handleBooking}
+          onClick={handleProceedToPayment}
           sx={{ mt: 2 }}
           disabled={selectedSeats.size === 0}
         >
-          Confirm Booking
+          Proceed to Payment
         </Button>
 
         <Snackbar
