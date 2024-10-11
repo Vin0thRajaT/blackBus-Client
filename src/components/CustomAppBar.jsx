@@ -33,7 +33,7 @@ const CustomAppBar = () => {
         </Button>
         {user && (
           <>
-            {user.role === "admin" ? ( // Check if user is admin
+            {user.role === "admin" ? (
               <>
                 <Button color="inherit" onClick={handleMenuClick}>
                   Manage
@@ -57,6 +57,13 @@ const CustomAppBar = () => {
                     onClick={handleMenuClose}
                   >
                     Create Bus
+                  </MenuItem>
+                  <MenuItem
+                    component={Link}
+                    to="/admin/register" // New link for admin registration
+                    onClick={handleMenuClose}
+                  >
+                    Register Admin
                   </MenuItem>
                 </Menu>
               </>
